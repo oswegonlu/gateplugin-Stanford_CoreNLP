@@ -1,27 +1,26 @@
 /*
  * Copyright (c) 2006-2016, The University of Sheffield. See the file
  * COPYRIGHT.txt in the software or at http://gate.ac.uk/gate/COPYRIGHT.txt
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option) any later
  * version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
  * details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program. If not, see <http://www.gnu.org/licenses/>.
- * 
+ *
  * $Id: Parser.java 17831 2014-04-15 09:37:23Z ian_roberts $
  */
 package gate.stanford;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
+import java.net.URLConnection;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -33,11 +32,8 @@ import java.util.Map;
 import edu.stanford.nlp.ling.Word;
 import edu.stanford.nlp.parser.lexparser.LexicalizedParser;
 import edu.stanford.nlp.parser.lexparser.TreebankLangParserParams;
-import edu.stanford.nlp.trees.GrammaticalStructure;
-import edu.stanford.nlp.trees.GrammaticalStructureFactory;
-import edu.stanford.nlp.trees.Tree;
-import edu.stanford.nlp.trees.Trees;
-import edu.stanford.nlp.trees.TypedDependency;
+import edu.stanford.nlp.parser.nndep.DependencyParser;
+import edu.stanford.nlp.trees.*;
 import gate.Annotation;
 import gate.AnnotationSet;
 import gate.Factory;
@@ -55,6 +51,7 @@ import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
 import gate.creole.metadata.RunTime;
 import gate.creole.metadata.Sharable;
+import gate.util.Files;
 import gate.util.InvalidOffsetException;
 
 /**
@@ -67,10 +64,10 @@ import gate.util.InvalidOffsetException;
  */
 @CreoleResource(name = "StanfordParser", comment = "Stanford parser wrapper", helpURL = "http://gate.ac.uk/userguide/sec:parsers:stanford")
 public class Parser extends AbstractLanguageAnalyser implements
-                                                    ProcessingResource {
+        ProcessingResource {
   private static final long serialVersionUID = -3062171258011850283L;
 
-  protected LexicalizedParser stanfordParser;
+  protected DependencyParser stanfordParser;
 
   /*
    * Type "SyntaxTreeNode" with feature "cat" is compatible with the classic
@@ -82,7 +79,7 @@ public class Parser extends AbstractLanguageAnalyser implements
 
   /* But "category" feature is compatible with the ANNIE POS tagger. */
   private static final String POS_TAG_FEATURE =
-      ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
+          ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
 
   public static final String DEPENDENCY_ANNOTATION_TYPE = "Dependency";
 
@@ -94,9 +91,9 @@ public class Parser extends AbstractLanguageAnalyser implements
 
   private ResourceReference parserFile;
 
-  protected boolean debugMode;
+  protected boolean debugMode = false;
 
-  private boolean reusePosTags;
+  private boolean reusePosTags = true;
 
   private Map<String, String> tagMap;
 
@@ -120,7 +117,7 @@ public class Parser extends AbstractLanguageAnalyser implements
 
   private boolean addDependencyAnnotations;
 
-  private boolean addPosTags;
+  //private boolean addPosTags;
 
   private boolean includeExtraDependencies;
 
@@ -149,7 +146,7 @@ public class Parser extends AbstractLanguageAnalyser implements
     interrupted = false;
     long startTime = System.currentTimeMillis();
     if(document == null) { throw new ExecutionException(
-        "No document to process!"); }
+            "No document to process!"); }
     fireStatusChanged("Running " + this.getName() + " on " + document.getName());
     fireProgressChanged(0);
     if(debugMode) {
@@ -159,23 +156,23 @@ public class Parser extends AbstractLanguageAnalyser implements
       System.err.println("Warning: no mapping loaded!");
     }
     checkInterruption();
-    if(addConstituentAnnotations || addDependencyFeatures
-        || addDependencyAnnotations || addPosTags) {
+    if(/*addConstituentAnnotations ||*/ addDependencyFeatures
+            || addDependencyAnnotations /*|| addPosTags*/) {
       parseSentences(document.getAnnotations(annotationSetName));
     } else {
       System.err.println("There is nothing for the parser to do.");
       System.err
-          .println("Please enable at least one of the \"add...\" options.");
+              .println("Please enable at least one of the \"add...\" options.");
     }
     fireProcessFinished();
     fireStatusChanged("Finished "
-        + this.getName()
-        + " on "
-        + document.getName()
-        + " in "
-        + NumberFormat.getInstance().format(
+            + this.getName()
+            + " on "
+            + document.getName()
+            + " in "
+            + NumberFormat.getInstance().format(
             (double)(System.currentTimeMillis() - startTime) / 1000)
-        + " seconds!");
+            + " seconds!");
   }
 
   /**
@@ -188,20 +185,20 @@ public class Parser extends AbstractLanguageAnalyser implements
     }
     super.init();
     if(tlppClass == null || tlppClass.equals("")) { throw new ResourceInstantiationException(
-        "TLPP class name must be specified"); }
+            "TLPP class name must be specified"); }
     try {
       Class<?> tlppClassObj = Class.forName(tlppClass);
       if(!TreebankLangParserParams.class.isAssignableFrom(tlppClassObj)) { throw new ResourceInstantiationException(
-          tlppClassObj + " does not implement "
-              + TreebankLangParserParams.class.getName()); }
+              tlppClassObj + " does not implement "
+                      + TreebankLangParserParams.class.getName()); }
       TreebankLangParserParams tlpp =
-          TreebankLangParserParams.class.cast(tlppClassObj.newInstance());
+              TreebankLangParserParams.class.cast(tlppClassObj.newInstance());
       gsf = tlpp.treebankLanguagePack().grammaticalStructureFactory();
     } catch(UnsupportedOperationException e) {
       throw new ResourceInstantiationException(e);
     } catch(ClassNotFoundException e) {
       throw new ResourceInstantiationException("Class " + tlppClass
-          + " not found", e);
+              + " not found", e);
     } catch(InstantiationException e) {
       throw new ResourceInstantiationException("Error creating TLPP object", e);
     } catch(IllegalAccessException e) {
@@ -225,13 +222,13 @@ public class Parser extends AbstractLanguageAnalyser implements
    * sentence at a time and storing the result in the output AS. (Sentences are
    * scanned for Tokens. You have to run the ANNIE tokenizer and splitter before
    * this PR.)
-   * 
+   *
    * @throws ExecutionInterruptedException
    */
   private void parseSentences(AnnotationSet annotationSet)
-      throws ExecutionInterruptedException {
+          throws ExecutionInterruptedException {
     List<Annotation> sentences =
-        gate.Utils.inDocumentOrder(annotationSet.get(inputSentenceType));
+            gate.Utils.inDocumentOrder(annotationSet.get(inputSentenceType));
     int sentencesDone = 0;
     int nbrSentences = sentences.size();
     for(Annotation sentence : sentences) {
@@ -246,7 +243,7 @@ public class Parser extends AbstractLanguageAnalyser implements
   /**
    * Generate the special data structure for one sentence and pass the List of
    * Word to the parser. Apply the annotations back to the document.
-   * 
+   *
    * @param sentence
    *          the Sentence annotation
    * @param s
@@ -257,12 +254,13 @@ public class Parser extends AbstractLanguageAnalyser implements
    * @throws ExecutionInterruptedException
    */
   private void parseOneSentence(AnnotationSet annotationSet,
-      Annotation sentence, int sentCtr, int sentCount)
-      throws ExecutionInterruptedException {
-    Tree tree;
+                                Annotation sentence, int sentCtr, int sentCount)
+          throws ExecutionInterruptedException {
+
+    TreeGraphNode tree;
     StanfordSentence stanfordSentence =
-        new StanfordSentence(sentence, inputTokenType, annotationSet,
-            reusePosTags);
+            new StanfordSentence(sentence, inputTokenType, annotationSet,
+                    reusePosTags);
     if(debugMode) {
       System.out.println(stanfordSentence.toString());
     }
@@ -276,145 +274,146 @@ public class Parser extends AbstractLanguageAnalyser implements
         int nbrMissingTags = stanfordSentence.numberOfMissingPosTags();
         if(nbrMissingTags > 0) {
           double percentMissing =
-              Math.ceil(100.0 * (nbrMissingTags)
-                  / (stanfordSentence.numberOfTokens()));
+                  Math.ceil(100.0 * (nbrMissingTags)
+                          / (stanfordSentence.numberOfTokens()));
           System.err.println("Warning (sentence " + sentCtr + "): "
-              + (int)percentMissing + "% of the Tokens are missing POS tags.");
+                  + (int)percentMissing + "% of the Tokens are missing POS tags.");
         }
       }
-      tree = stanfordParser.parse(wordList);
+
+      GrammaticalStructure gs = stanfordParser.predict(wordList);
+
       checkInterruption();
-      if(addConstituentAnnotations || addPosTags) {
-        annotatePhraseStructureRecursively(annotationSet, stanfordSentence,
-            tree, tree);
-      }
+//      if(addConstituentAnnotations || addPosTags) {
+//        annotatePhraseStructureRecursively(annotationSet, stanfordSentence,
+//                tree, tree);
+//      } // TODO: Add back! [DRS]
       checkInterruption();
       if(addDependencyFeatures || addDependencyAnnotations) {
-        annotateDependencies(annotationSet, stanfordSentence, tree);
+        annotateDependencies(annotationSet, stanfordSentence, gs);
       }
       if(debugMode) {
         System.out.println("Parsed sentence " + sentCtr + " of " + sentCount);
       }
     } else if(debugMode) {
       System.out.println("Ignored empty sentence " + sentCtr + " of "
-          + sentCount);
+              + sentCount);
     }
   }
 
-  /**
-   * Generate a SyntaxTreeNode Annotation corresponding to this Tree. Work
-   * recursively so that the annotations are actually generated from the bottom
-   * up, in order to build the consists list of annotation IDs.
-   * 
-   * @param tree
-   *          the current subtree
-   * @param rootTree
-   *          the whole sentence, used to find the span of the current subtree
-   * @return a GATE Annotation of type "SyntaxTreeNode"
-   */
-  protected Annotation annotatePhraseStructureRecursively(
-      AnnotationSet annotationSet, StanfordSentence stanfordSentence,
-      Tree tree, Tree rootTree) {
-    Annotation annotation = null;
-    Annotation child;
-    String label = tree.value();
-    List<Tree> children = tree.getChildrenAsList();
-    if(children.size() == 0) { return null; }
-    /* implied else */
-    /*
-     * following line generates ClassCastException IntPair span =
-     * tree.getSpan(); edu.stanford.nlp.ling.CategoryWordTag at
-     * edu.stanford.nlp.trees.Tree.getSpan(Tree.java:393) but I think it's a bug
-     * in the parser, so I'm hacking around it as follows.
-     */
-    int startPos = Trees.leftEdge(tree, rootTree);
-    int endPos = Trees.rightEdge(tree, rootTree);
-    Long startNode = stanfordSentence.startPos2offset(startPos);
-    Long endNode = stanfordSentence.endPos2offset(endPos);
-    List<Integer> consists = new ArrayList<Integer>();
-    Iterator<Tree> childIter = children.iterator();
-    while(childIter.hasNext()) {
-      child =
-          annotatePhraseStructureRecursively(annotationSet, stanfordSentence,
-              childIter.next(), rootTree);
-      if((child != null) && (!child.getType().equals(inputTokenType))) {
-        consists.add(child.getId());
-      }
-    }
-    annotation =
-        annotatePhraseStructureConstituent(annotationSet, startNode, endNode,
-            label, consists, tree.depth());
-    return annotation;
-  }
+//  /**
+//   * Generate a SyntaxTreeNode Annotation corresponding to this Tree. Work
+//   * recursively so that the annotations are actually generated from the bottom
+//   * up, in order to build the consists list of annotation IDs.
+//   *
+//   * @param tree
+//   *          the current subtree
+//   * @param rootTree
+//   *          the whole sentence, used to find the span of the current subtree
+//   * @return a GATE Annotation of type "SyntaxTreeNode"
+//   */
+//  protected Annotation annotatePhraseStructureRecursively(
+//          AnnotationSet annotationSet, StanfordSentence stanfordSentence,
+//          Tree tree, Tree rootTree) {
+//    Annotation annotation = null;
+//    Annotation child;
+//    String label = tree.value();
+//    List<Tree> children = tree.getChildrenAsList();
+//    if(children.size() == 0) { return null; }
+//    /* implied else */
+//    /*
+//     * following line generates ClassCastException IntPair span =
+//     * tree.getSpan(); edu.stanford.nlp.ling.CategoryWordTag at
+//     * edu.stanford.nlp.trees.Tree.getSpan(Tree.java:393) but I think it's a bug
+//     * in the parser, so I'm hacking around it as follows.
+//     */
+//    int startPos = Trees.leftEdge(tree, rootTree);
+//    int endPos = Trees.rightEdge(tree, rootTree);
+//    Long startNode = stanfordSentence.startPos2offset(startPos);
+//    Long endNode = stanfordSentence.endPos2offset(endPos);
+//    List<Integer> consists = new ArrayList<Integer>();
+//    Iterator<Tree> childIter = children.iterator();
+//    while(childIter.hasNext()) {
+//      child =
+//              annotatePhraseStructureRecursively(annotationSet, stanfordSentence,
+//                      childIter.next(), rootTree);
+//      if((child != null) && (!child.getType().equals(inputTokenType))) {
+//        consists.add(child.getId());
+//      }
+//    }
+//    annotation =
+//            annotatePhraseStructureConstituent(annotationSet, startNode, endNode,
+//                    label, consists, tree.depth());
+//    return annotation;
+//  }
 
-  /**
-   * Record one constituent as an annotation.
-   * 
-   * @param startOffset
-   * @param endOffset
-   * @param label
-   * @param consists
-   * @param depth
-   * @return
-   */
-  private Annotation annotatePhraseStructureConstituent(
-      AnnotationSet annotationSet, Long startOffset, Long endOffset,
-      String label, List<Integer> consists, int depth) {
-    Annotation phrAnnotation = null;
-    Integer phrID;
-    try {
-      String cat;
-      if(useMapping && mappingLoaded) {
-        cat = translateTag(label);
-      } else {
-        cat = label;
-      }
-      if(addConstituentAnnotations) {
-        String text =
-            document.getContent().getContent(startOffset, endOffset).toString();
-        FeatureMap fm = gate.Factory.newFeatureMap();
-        fm.put(PHRASE_CAT_FEATURE, cat);
-        fm.put("text", text);
-        /* Ignore empty list features on the token-equivalent annotations. */
-        if(consists.size() > 0) {
-          fm.put("consists", consists);
-        }
-        phrID =
-            annotationSet.add(startOffset, endOffset, PHRASE_ANNOTATION_TYPE,
-                fm);
-        phrAnnotation = annotationSet.get(phrID);
-        recordID(annotationSet, phrID);
-      }
-      if(addPosTags && (depth == 1)) {
-        /* Expected to be a singleton set! */
-        AnnotationSet tokenSet =
-            annotationSet.get(inputTokenType, startOffset, endOffset);
-        if(tokenSet.size() == 1) {
-          Annotation token = tokenSet.iterator().next();
-          /*
-           * Add POS tag to token. (Note: GATE/Hepple uses "(" and ")" for
-           * Penn/Stanford's "-LRB-" and "-RRB-".
-           */
-          String hepCat = StanfordSentence.unescapePosTag(cat);
-          token.getFeatures().put(POS_TAG_FEATURE, hepCat);
-        } else {
-          System.err.println("Found a tokenSet with " + tokenSet.size()
-              + " members!");
-        }
-      }
-    } catch(InvalidOffsetException e) {
-      e.printStackTrace();
-    }
-    return phrAnnotation;
-  }
+//  /**
+//   * Record one constituent as an annotation.
+//   *
+//   * @param startOffset
+//   * @param endOffset
+//   * @param label
+//   * @param consists
+//   * @param depth
+//   * @return
+//   */
+//  private Annotation annotatePhraseStructureConstituent(
+//          AnnotationSet annotationSet, Long startOffset, Long endOffset,
+//          String label, List<Integer> consists, int depth) {
+//    Annotation phrAnnotation = null;
+//    Integer phrID;
+//    try {
+//      String cat;
+//      if(useMapping && mappingLoaded) {
+//        cat = translateTag(label);
+//      } else {
+//        cat = label;
+//      }
+//      if(addConstituentAnnotations) {
+//        String text =
+//                document.getContent().getContent(startOffset, endOffset).toString();
+//        FeatureMap fm = gate.Factory.newFeatureMap();
+//        fm.put(PHRASE_CAT_FEATURE, cat);
+//        fm.put("text", text);
+//        /* Ignore empty list features on the token-equivalent annotations. */
+//        if(consists.size() > 0) {
+//          fm.put("consists", consists);
+//        }
+//        phrID =
+//                annotationSet.add(startOffset, endOffset, PHRASE_ANNOTATION_TYPE,
+//                        fm);
+//        phrAnnotation = annotationSet.get(phrID);
+//        recordID(annotationSet, phrID);
+//      }
+//      if(addPosTags && (depth == 1)) {
+//        /* Expected to be a singleton set! */
+//        AnnotationSet tokenSet =
+//                annotationSet.get(inputTokenType, startOffset, endOffset);
+//        if(tokenSet.size() == 1) {
+//          Annotation token = tokenSet.iterator().next();
+//          /*
+//           * Add POS tag to token. (Note: GATE/Hepple uses "(" and ")" for
+//           * Penn/Stanford's "-LRB-" and "-RRB-".
+//           */
+//          String hepCat = StanfordSentence.unescapePosTag(cat);
+//          token.getFeatures().put(POS_TAG_FEATURE, hepCat);
+//        } else {
+//          System.err.println("Found a tokenSet with " + tokenSet.size()
+//                  + " members!");
+//        }
+//      }
+//    } catch(InvalidOffsetException e) {
+//      e.printStackTrace();
+//    }
+//    return phrAnnotation;
+//  }
 
   @SuppressWarnings("unchecked")
   private void annotateDependencies(AnnotationSet annotationSet,
-      StanfordSentence stanfordSentence, Tree tree) {
-    GrammaticalStructure gs = gsf.newGrammaticalStructure(tree);
+                                    StanfordSentence stanfordSentence, GrammaticalStructure gs) {
     Collection<TypedDependency> dependencies =
-        DependencyMode.getDependencies(gs, dependencyMode,
-            includeExtraDependencies);
+            DependencyMode.getDependencies(gs, dependencyMode,
+                    includeExtraDependencies);
     if(dependencies == null) {
       if(debugMode) {
         System.out.println("dependencies == null");
@@ -443,14 +442,14 @@ public class Parser extends AbstractLanguageAnalyser implements
       dependentTokenID = dependent.getId();
       if(addDependencyFeatures) {
         List<DependencyRelation> depsForTok =
-            (List<DependencyRelation>)governor.getFeatures().get(
-                dependenciesFeature);
+                (List<DependencyRelation>)governor.getFeatures().get(
+                        dependenciesFeature);
         if(depsForTok == null) {
           depsForTok = new ArrayList<DependencyRelation>();
           governor.getFeatures().put(dependenciesFeature, depsForTok);
         }
         depsForTok
-            .add(new DependencyRelation(dependencyKind, dependentTokenID));
+                .add(new DependencyRelation(dependencyKind, dependentTokenID));
       }
       if(addDependencyAnnotations) {
         depFeatures = gate.Factory.newFeatureMap();
@@ -467,7 +466,7 @@ public class Parser extends AbstractLanguageAnalyser implements
         depRH = Math.max(offsetRH0, offsetRH1);
         try {
           annotationSet.add(depLH, depRH, DEPENDENCY_ANNOTATION_TYPE,
-              depFeatures);
+                  depFeatures);
         } catch(InvalidOffsetException e) {
           e.printStackTrace();
         }
@@ -476,15 +475,15 @@ public class Parser extends AbstractLanguageAnalyser implements
   }
 
   private void instantiateStanfordParser()
-      throws ResourceInstantiationException {
+          throws ResourceInstantiationException {
     if(stanfordParser != null) return;
     try {
-      // String filepath = Files.fileFromURL(parserFile).getAbsolutePath();
-      stanfordParser =
-          LexicalizedParser.getParserFromSerializedFile(parserFile.toURL()
-              .toExternalForm());
+      String filepath = parserFile.toURL().toString();
+      stanfordParser = DependencyParser.loadFromModelFile(filepath);
+          /*LexicalizedParser.getParserFromSerializedFile(parserFile.toURL()
+              .toExternalForm());*/
     } catch(Exception e) {
-      throw new ResourceInstantiationException(e);
+      throw new ResourceInstantiationException(new ResourceInstantiationException());
     }
   }
 
@@ -492,7 +491,7 @@ public class Parser extends AbstractLanguageAnalyser implements
     tagMap = new HashMap<String, String>();
     mappingLoaded = false;
     try (BufferedReader br =
-        new BufferedReader(new InputStreamReader(mappingFile.openStream()))) {
+                 new BufferedReader(new InputStreamReader(mappingFile.openStream()))) {
       String line = "";
       // read until it reaches to an end of the file
       while((line = br.readLine()) != null) {
@@ -509,12 +508,12 @@ public class Parser extends AbstractLanguageAnalyser implements
 
     } catch(RuntimeException | IOException e) {
       System.err
-          .println("Exception trying to load mapping file " + mappingFile);
+              .println("Exception trying to load mapping file " + mappingFile);
       e.printStackTrace();
     }
     int nbrMapped = tagMap.size();
     System.out
-        .println("Loaded " + nbrMapped + " mappings from file " + mappingFile);
+            .println("Loaded " + nbrMapped + " mappings from file " + mappingFile);
     mappingLoaded = (nbrMapped > 0);
   }
 
@@ -522,7 +521,7 @@ public class Parser extends AbstractLanguageAnalyser implements
    * This method stores the annotation ID as a value of feature "ID" on the
    * relevant annotation. (Mainly to make the ID visible in the GUI for
    * debugging.)
-   * 
+   *
    * @param annSet
    * @param annotationID
    */
@@ -532,13 +531,13 @@ public class Parser extends AbstractLanguageAnalyser implements
 
   private void checkInterruption() throws ExecutionInterruptedException {
     if(isInterrupted()) { throw new ExecutionInterruptedException(
-        "Execution of " + this.getName() + " has been abruptly interrupted!"); }
+            "Execution of " + this.getName() + " has been abruptly interrupted!"); }
   }
 
   /**
    * Translate the tag in the map, or leave it the same if there is no
    * translation.
-   * 
+   *
    * @param stanfordTag
    * @return
    */
@@ -549,7 +548,7 @@ public class Parser extends AbstractLanguageAnalyser implements
     }
     return translatedTag;
   }
-
+  //TODO: Is this the right kind of params for the new parser?
   /* get & set methods for the CREOLE parameters */
   @CreoleParameter(comment = "TreebankLangParserParams implementation used to extract the dependencies", defaultValue = "edu.stanford.nlp.parser.lexparser.EnglishTreebankParserParams")
   public void setTlppClass(String tlppClass) {
@@ -563,7 +562,7 @@ public class Parser extends AbstractLanguageAnalyser implements
   @Optional
   @RunTime
   @CreoleParameter(comment = "annotationSet used for input (Token and "
-      + "Sentence annotations) and output")
+          + "Sentence annotations) and output")
   public void setAnnotationSetName(String annotationSetName) {
     this.annotationSetName = annotationSetName;
   }
@@ -572,7 +571,8 @@ public class Parser extends AbstractLanguageAnalyser implements
     return this.annotationSetName;
   }
 
-  @CreoleParameter(comment = "path to the parser's grammar file", defaultValue = "resources/englishRNN.ser.gz")
+  // @CreoleParameter(comment = "path to the parser's grammar file", defaultValue = "resources/englishRNN.ser.gz")
+  @CreoleParameter(comment = "path to the parser's grammar file", defaultValue = "resources/english_UD.gz")
   public void setParserFile(ResourceReference parserFile) {
     this.parserFile = parserFile;
   }
@@ -601,25 +601,25 @@ public class Parser extends AbstractLanguageAnalyser implements
     return new Boolean(this.debugMode);
   }
 
-  @RunTime
-  @CreoleParameter(comment = "Re-use existing POS tags on tokens", defaultValue = "false")
-  public void setReusePosTags(Boolean reusePosTags) {
-    this.reusePosTags = reusePosTags.booleanValue();
-  }
+//  @RunTime
+//  @CreoleParameter(comment = "Re-use existing POS tags on tokens", defaultValue = "true")
+//  public void setReusePosTags(Boolean reusePosTags) {
+//    this.reusePosTags = reusePosTags.booleanValue();
+//  }
+//
+//  public Boolean getReusePosTags() {
+//    return new Boolean(this.reusePosTags);
+//  }
 
-  public Boolean getReusePosTags() {
-    return new Boolean(this.reusePosTags);
-  }
+//  @RunTime
+//  @CreoleParameter(comment = "Create POS tags on the Token annotations", defaultValue = "false")
+//  public void setAddPosTags(Boolean posTagTokens) {
+//    this.addPosTags = posTagTokens.booleanValue();
+//  }
 
-  @RunTime
-  @CreoleParameter(comment = "Create POS tags on the Token annotations", defaultValue = "false")
-  public void setAddPosTags(Boolean posTagTokens) {
-    this.addPosTags = posTagTokens.booleanValue();
-  }
-
-  public Boolean getAddPosTags() {
-    return new Boolean(this.addPosTags);
-  }
+//  public Boolean getAddPosTags() {
+//    return new Boolean(this.addPosTags);
+//  }
 
   @RunTime
   @CreoleParameter(comment = "use tag mapping", defaultValue = "false")
@@ -721,7 +721,7 @@ public class Parser extends AbstractLanguageAnalyser implements
    * directly.</b>
    */
   @Sharable
-  public void setStanfordParser(LexicalizedParser parser) {
+  public void setStanfordParser(DependencyParser parser) {
     this.stanfordParser = parser;
   }
 
@@ -730,7 +730,8 @@ public class Parser extends AbstractLanguageAnalyser implements
    * intended for use by {@link Factory#duplicate} and should not be called
    * directly.</b>
    */
-  public LexicalizedParser getStanfordParser() {
+  public DependencyParser getStanfordParser() {
     return stanfordParser;
   }
 }
+

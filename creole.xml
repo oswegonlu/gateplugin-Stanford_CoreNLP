@@ -1,0 +1,5 @@
+<?xml version="1.0"?>  
+<CREOLE-DIRECTORY ID="Stanford CoreNLP tools" VERSION="2015.1025" DESCRIPTION="Stanford CoreNLP" GATE-MIN="8.0">  
+  <JAR SCAN="true">stanford-corenlp-8.5.1.jar</JAR>
+  <JAR SCAN="true">stanford-corenlp-8.5.1-creole.jar</JAR>
+</CREOLE-DIRECTORY> 

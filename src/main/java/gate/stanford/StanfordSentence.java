@@ -1,20 +1,20 @@
 /*
  * Copyright (c) 2006-2016, The University of Sheffield. See the file
  * COPYRIGHT.txt in the software or at http://gate.ac.uk/gate/COPYRIGHT.txt
- * 
+ *
  * This program is free software: you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option) any later
  * version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
  * details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program. If not, see <http://www.gnu.org/licenses/>.
- * 
+ *
  * $Id: StanfordSentence.java 15600 2012-03-19 15:40:56Z adamfunk $
  */
 package gate.stanford;
@@ -50,10 +50,10 @@ public class StanfordSentence {
   private List<Annotation> tokens;
 
   private static final String POS_TAG_FEATURE =
-      ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
+          ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
 
   private static final String STRING_FEATURE =
-      ANNIEConstants.TOKEN_STRING_FEATURE_NAME;
+          ANNIEConstants.TOKEN_STRING_FEATURE_NAME;
 
   int nbrOfTokens, nbrOfMissingPosTags;
 
@@ -61,10 +61,10 @@ public class StanfordSentence {
    * This is probably dodgy, but I can't find an "unknown" tag in the Penn
    * documentation.
    */
-  private static final String UNKNOWN_TAG = "NN";
+  private static final String UNKNOWN_TAG = "UNK";
 
   public StanfordSentence(Annotation sentence, String tokenType,
-      AnnotationSet inputAS, boolean usePosTags) {
+                          AnnotationSet inputAS, boolean usePosTags) {
     startPosToOffset = new HashMap<Integer, Long>();
     endPosToOffset = new HashMap<Integer, Long>();
     startPosToToken = new HashMap<Integer, Annotation>();
@@ -74,14 +74,14 @@ public class StanfordSentence {
     nbrOfTokens = 0;
     nbrOfMissingPosTags = 0;
     tokens =
-        Utils.inDocumentOrder(inputAS.getContained(sentenceStartOffset,
-            sentenceEndOffset).get(tokenType));
+            Utils.inDocumentOrder(inputAS.getContained(sentenceStartOffset,
+                    sentenceEndOffset).get(tokenType));
     words = new ArrayList<Word>();
     add(-1, sentence, "S");
     int tokenNo = 0;
     for(Annotation token : tokens) {
       String tokenString =
-          escapeToken(token.getFeatures().get(STRING_FEATURE).toString());
+              escapeToken(token.getFeatures().get(STRING_FEATURE).toString());
       add(tokenNo, token, tokenString);
       /*
        * The FAQ says the parser will automatically use existing POS tags if the
@@ -101,14 +101,14 @@ public class StanfordSentence {
   public String toString() {
     StringBuffer output = new StringBuffer();
     output.append("S: ").append(Strings.toString(startPosToOffset))
-        .append('\n');
+            .append('\n');
     output.append("   ").append(Strings.toString(startPosToString))
-        .append('\n');
+            .append('\n');
     output.append("   ").append(Strings.toString(endPosToOffset));
     return output.toString();
   }
 
-  private String getEscapedPosTag(Annotation token) {
+  public String getEscapedPosTag(Annotation token) {
     String pos = UNKNOWN_TAG;
     FeatureMap tokenFeatures = token.getFeatures();
     if(tokenFeatures.containsKey(POS_TAG_FEATURE)) {
@@ -138,7 +138,7 @@ public class StanfordSentence {
    * specifies each constituent's span in terms of token boundaries re-numbered
    * within each sentence, which we need to convert to GATE character offsets
    * within the whole document.
-   * 
+   *
    * Example: "This is a test." starting at document offset 100, containing five
    * tokens. Stanford says "This" starts at 0 and ends at 1; GATE says 100 to
    * 104. Stanford says "is a test" starts at 1 and ends at 4; GATE says 105 to
@@ -160,7 +160,7 @@ public class StanfordSentence {
    * Change the Token's string to match the Penn Treebank's escaping system. See
    * Stanford parser FAQ "How can I provide the correct tokenization of my
    * sentence to the parser?"
-   * 
+   *
    * @param token
    *          original string feature of Token
    * @return escaped version of string
@@ -173,7 +173,7 @@ public class StanfordSentence {
     // / --> \/
     // * --> \*
     if(token.contains("/") || token.contains("*")) { return token.replace("/",
-        "\\/").replace("*", "\\*"); }
+            "\\/").replace("*", "\\*"); }
     return token;
   }
 
@@ -203,7 +203,7 @@ public class StanfordSentence {
 
   /**
    * Convert a Stanford start position to a GATE offset.
-   * 
+   *
    * @param startPos the Stanford start position
    * @return the offset in the GATE document
    */
@@ -213,7 +213,7 @@ public class StanfordSentence {
 
   /**
    * Convert a Stanford end position to a GATE offset.
-   * 
+   *
    * @param endPos the Stanford end position
    * @return the offset in the GATE document
    */
